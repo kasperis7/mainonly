@@ -1,184 +1,185 @@
+// A JavaScript bookmarklet designed to isolate and highlight a specific element on a webpage, effectively hiding all other elements.
+
 (function () {
-  // 如果脚本已在运行，先模拟按下 Esc 键来清除上一次的状态
-  if (document.getElementById("mainonly")) {
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    return; // 退出，避免重复执行
-  }
-
-  var currentElement = document.body;
-  var markBy = null; // 'id' or 'class'
-
-  // 初始化，标记 body 元素
-  if (currentElement.id) {
-    markBy = "class";
-    currentElement.classList.add("mainonly");
-  } else {
-    markBy = "id";
-    currentElement.id = "mainonly";
-  }
-
-  // 注入高亮边框的样式
-  let highlightStyle = document.head.appendChild(document.createElement("style"));
-  highlightStyle.textContent = `
-    #mainonly { outline: 2px solid red; }
-    .mainonly { outline: 2px solid red; }
-  `;
-
-  // 创建并显示操作指南
-  let guideDiv = document.body.appendChild(document.createElement("div"));
-  guideDiv.className = "mainonly-guide";
-  guideDiv.innerHTML = `
-    <p>正在选择元素。按 <kbd>Esc</kbd> 键取消选择。向下滚动，或按下 <kbd>=</kbd>/<kbd>.</kbd> 键缩小选区。向上滚动，或按下 <kbd>-</kbd>/<kbd>,</kbd> 键扩大选区。</p>
-    <p>Selecting element. Press <kbd>Esc</kbd> to cancel selection. Scroll down, or press <kbd>=</kbd>/<kbd>.</kbd> to shrink the selection. Scroll up, or press <kbd>-</kbd>/<kbd>,</kbd>, to expand the selection.</p>
-  `;
-
-  // 指南的样式
-  let guideStyle = document.head.appendChild(document.createElement("style"));
-  guideStyle.textContent = `
-    .mainonly-guide {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 1rem;
-      font-size: 1rem;
-      font-family: sans-serif;
-      text-align: center;
-      color: white;
-      background-color: rgba(0, 0, 0, 0.7);
-      border-radius: 0.5em;
-      z-index: 2147483647;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    // if re-run on the same page, remove the previous instance
+    if (document.getElementById("mainonly")) {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     }
-    .mainonly-guide kbd {
-      display: inline-block;
-      padding: 0.1em 0.3em;
-      font-size: 0.9em;
-      line-height: 1;
-      color: #24292e;
-      vertical-align: middle;
-      background-color: #fafbfc;
-      border: 1px solid #d1d5da;
-      border-radius: 3px;
-      box-shadow: inset 0 -1px 0 #d1d5da;
-    }
-  `;
 
-  // 更新当前选中的元素
-  function updateSelection(newElement) {
-    if (newElement instanceof HTMLElement) {
-      // 移除旧元素的标记
-      if (markBy === "id") {
-        currentElement.removeAttribute("id");
-      } else {
-        currentElement.classList.remove("mainonly");
-      }
-      
-      currentElement = newElement;
+    var selectedElement = document.body;
+    var lastStrategy = null; // which strategy is used to select the element
 
-      // 为新元素添加标记
-      if (currentElement.id) {
-        markBy = "class";
-        currentElement.classList.add("mainonly");
-      } else {
-        markBy = "id";
-        currentElement.id = "mainonly";
-      }
-    }
-  }
-
-  // 鼠标悬停时更新选择
-  function handleMouseOver(event) {
-    updateSelection(event.target);
-  }
-
-  // 点击时最终确定选择
-  function handleClick(event) {
-    event.preventDefault();
-    event.stopPropagation(); // 阻止事件冒泡
-
-    // 给所有父元素添加一个临时 class
-    (function addParentClass() {
-      for (var el = currentElement; el && el.parentElement; el = el.parentElement) {
-        el.parentElement.classList.add("mainonly_parents");
-      }
-    })();
-
-    // 注入最终样式，隐藏其它所有元素
-    if (markBy === "id") {
-      highlightStyle.textContent = `
-        * { visibility: hidden !important; }
-        #mainonly, #mainonly *, .mainonly_parents { visibility: visible !important; }
-        .mainonly_parents { display: block !important; }
-      `;
+    // strategy overview
+    // 1. if the selected element doesn't has `id`, then use `id`
+    // (since it fixed the issue of pure text nodes can not be styled with CSS)
+    // 2. otherwise fallback to use `class`
+    if (!selectedElement.id) {
+        // id
+        lastStrategy = 'id';
+        selectedElement.id = "mainonly";
     } else {
-      highlightStyle.textContent = `
-        * { visibility: hidden !important; }
-        .mainonly, .mainonly *, .mainonly_parents { visibility: visible !important; }
-        .mainonly_parents { display: block !important; }
-      `;
+        // class
+        lastStrategy = 'class';
+        selectedElement.classList.add("mainonly");
     }
 
-    cleanupListeners();
-    cleanupUI();
-  }
+    const style = document.head.appendChild(document.createElement("style"));
+    style.textContent = "#mainonly { outline: 2px solid red; }  .mainonly { outline: 2px solid red; }";
 
-  // 移除指南UI
-  function cleanupUI() {
-    guideDiv.remove();
-    guideStyle.remove();
-  }
-  
-  // 移除所有事件监听器
-  function cleanupListeners() {
-    document.removeEventListener("mouseover", handleMouseOver);
-    document.removeEventListener("click", handleClick, true); // 使用捕获模式
-    document.removeEventListener("wheel", handleWheel, { passive: false });
-    document.removeEventListener("keydown", handleKeyDown);
-  }
+    // selection guide overlay
+    const guideTextCn = '正在选择元素。按 <kbd>Esc</kbd> 键取消选择。向下滚动，或按下 <kbd>=</kbd>/<kbd>.</kbd> 键缩小选区。向上滚动，或按下 <kbd>-</kbd>/<kbd>,</kbd> 键扩大选区。'
+    const guideTextEn = 'Selecting element. Press <kbd>Esc</kbd> to cancel selection. Scroll down, or press <kbd>=</kbd>/<kbd>.</kbd> to shrink the selection. Scroll up, or press <kbd>-</kbd>/<kbd>,</kbd>, to expand the selection.'
+    const guide = document.body.appendChild(document.createElement("div"));
+    guide.className = "mainonly-guide";
+    guide.innerHTML = `<p>${guideTextCn}</p><p>${guideTextEn}</p>`;
+    const guideStyle = document.head.appendChild(document.createElement("style"));
+    guideStyle.textContent = `
+        .mainonly-guide {
+                position: fixed;
+                top: 0;
+                left: 50%; /* center the box horizontally */
+                transform: translate(-50%, 0); /* center the box horizontally */
+                padding: 0.5rem;
+                font-size: 1rem;
+                font-family: sans-serif;
+                text-align: center;
+                color: white;
+                background-color: rgba(0, 0, 0, 0.5);
+                border-radius: 0.5em;
+                z-index: 999999999;
+            kbd {
+                display: inline-block;
+                padding: 0.1em 0.3em;
+                font-size: 0.8em;
+                line-height: 1;
+                color: #24292e;
+                vertical-align: middle;
+                background-color: #fafbfc;
+                border: 1px solid #d1d5da;
+                border-radius: 3px;
+                box-shadow: inset 0 -1px 0 #d1d5da;
+            }
+        }`;
 
-  // 处理键盘事件
-  function handleKeyDown(event) {
-    if (event.key === "Escape") {
-      highlightStyle.remove();
-      document.querySelectorAll(".mainonly_parents").forEach(el => el.classList.remove("mainonly_parents"));
-      if (markBy === "id") {
-        currentElement.removeAttribute("id");
-      } else {
-        currentElement.classList.remove("mainonly");
-      }
-      cleanupListeners();
-      cleanupUI();
-    } else if (event.key === "," || event.key === "-") {
-      if (currentElement.parentElement) updateSelection(currentElement.parentElement);
-    } else if (event.key === "." || event.key === "=") {
-      const hoveredElements = currentElement.querySelectorAll(":hover");
-      const lastHovered = hoveredElements[hoveredElements.length - 1];
-      if (lastHovered && currentElement.contains(lastHovered)) {
-          updateSelection(lastHovered);
-      }
+    /** @param {*} element */
+    function outlineElement(element) {
+        if (element instanceof HTMLElement) { // Ignores non-HTMLElements
+            // deselect previous element
+            if (lastStrategy === 'id') {
+                // id
+                selectedElement.removeAttribute("id");
+            } else {
+                // class
+                selectedElement.classList.remove("mainonly");
+            }
+
+            // select the new selected element
+            selectedElement = element;
+
+            if (!selectedElement.id) {
+                // id
+                lastStrategy = 'id';
+                selectedElement.id = "mainonly";
+            } else {
+                // class
+                lastStrategy = 'class';
+                selectedElement.classList.add("mainonly");
+            }
+        }
     }
-  }
 
-  // 处理滚轮事件
-  function handleWheel(event) {
-    event.preventDefault();
-    if (event.deltaY < 0) { // 向上滚
-      if (currentElement.parentElement) updateSelection(currentElement.parentElement);
-    } else { // 向下滚
-      const hoveredElements = currentElement.querySelectorAll(":hover");
-      const lastHovered = hoveredElements[hoveredElements.length - 1];
-       if (lastHovered && currentElement.contains(lastHovered)) {
-          updateSelection(lastHovered);
-      }
+    /** @param {MouseEvent} event */
+    function onMouseOver(event) {
+        outlineElement(event.target);
     }
-  }
 
-  // 绑定初始事件监听器
-  document.addEventListener("mouseover", handleMouseOver);
-  // 使用捕获模式来确保我们的 click 事件先于页面上其他的 click 事件执行
-  document.addEventListener("click", handleClick, { capture: true, once: true });
-  document.addEventListener("wheel", handleWheel, { passive: false });
-  document.addEventListener("keydown", handleKeyDown);
+    /** @param {MouseEvent} event */
+    function onClick(event) {
+        event.preventDefault();
+        markParents();
+        if (lastStrategy === 'id') {
+            // id
+            style.textContent = `* { visibility: hidden; } #mainonly, #mainonly *, .mainonly_parents { visibility: visible; }`;
+        } else {
+            // class
+            style.textContent = `* { visibility: hidden; } .mainonly, .mainonly *, .mainonly_parents { visibility: visible; }`;
+        }
+        cleanupEventListeners();
+        hideGuideOverlay();
+    }
 
+    function hideGuideOverlay() {
+        guide.remove();
+        guideStyle.remove();
+    }
+
+    function markParents() {
+        var parents = selectedElement;
+        while (parents.parentElement) {
+            parents = parents.parentElement;
+            parents.classList.add("mainonly_parents");
+        }
+    }
+
+    function removeParents() {
+        var parents = document.querySelectorAll(".mainonly_parents");
+        for (var i = 0; i < parents.length; i++) {
+            parents[i].classList.remove("mainonly_parents");
+        }
+    }
+
+    /** @param {KeyboardEvent} event */
+    function onKeydown(event) {
+        if (event.key === "Escape") {
+            // Recover the hidden elements
+            style.remove();
+            document.removeEventListener("keydown", onKeydown);
+            cleanupEventListeners();
+            hideGuideOverlay();
+            // Restore the selected element to its original state
+            if (lastStrategy === 'id') {
+                // id
+                selectedElement.removeAttribute("id");
+            } else {
+                // class
+                selectedElement.classList.remove("mainonly");
+            }
+            removeParents();
+        } else if (event.key === ',' || event.key === '-') {
+            // up, select parent element
+            outlineElement(selectedElement.parentElement);
+        } else if (event.key === '.' || event.key === '=') {
+            // down, select first child element
+            var childElement = selectedElement.querySelector(":hover");
+            if (childElement) {
+                outlineElement(childElement);
+            }
+        }
+    }
+
+    /** @param {WheelEvent} event */
+    function onWheel(event) {
+        event.preventDefault();
+        if (event.deltaY < 0) {
+            // Scrolling up, select parent element
+            outlineElement(selectedElement.parentElement);
+        } else {
+            // Scrolling down, select child element containing the cursor
+            var childElement = selectedElement.querySelector(":hover");
+            if (childElement) {
+                outlineElement(childElement);
+            }
+        }
+    }
+
+    function cleanupEventListeners() {
+        document.removeEventListener("mouseover", onMouseOver);
+        document.removeEventListener("click", onClick);
+        document.removeEventListener("wheel", onWheel);
+    }
+
+    document.addEventListener("mouseover", onMouseOver);
+    document.addEventListener("click", onClick);
+    document.addEventListener("wheel", onWheel, { passive: false });
+    document.addEventListener("keydown", onKeydown);
 })();
