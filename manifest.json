@@ -1,14 +1,18 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "MainOnly Element Focus",
   "version": "1.0",
   "description": "通过右键菜单选择页面上的一个元素并隐藏其他所有内容。",
   "permissions": [
     "contextMenus",
-    "scripting",
     "activeTab"
   ],
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+        "id": "anon@anon.com"
+    }
   }
 }
